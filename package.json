@@ -2,7 +2,7 @@
   "name": "jira-skill",
   "displayName": "Jira-skill",
   "description": "GitHub Copilot Skill for interaksjon med Jira – hent oppgaver, assigner, oppdater status og start utvikling direkte fra Copilot Chat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "vegvesen",
   "license": "MIT",
   "engines": {
