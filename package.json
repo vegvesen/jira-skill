@@ -1,0 +1,111 @@
+{
+  "name": "jira-skill",
+  "displayName": "Jira-skill",
+  "description": "GitHub Copilot Skill for interaksjon med Jira – hent oppgaver, assigner, oppdater status og start utvikling direkte fra Copilot Chat",
+  "version": "0.1.0",
+  "publisher": "vegvesen",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Chat"
+  ],
+  "extensionDependencies": [
+    "github.copilot-chat"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jira-skill.startDevelopment",
+        "title": "Jira: Start utvikling i Plan-mode"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "jira-skill.assistant",
+        "fullName": "Jira-skill",
+        "name": "jira",
+        "description": "Interager med Jira – hent oppgaver, assigner til deg selv, oppdater status og start utvikling",
+        "isSticky": false,
+        "commands": [
+          {
+            "name": "neste",
+            "description": "Ta neste høyest prioriterte oppgave fra backlog, assigner til deg selv og start utvikling"
+          },
+          {
+            "name": "mine",
+            "description": "List alle Jira-oppgaver som er tildelt deg"
+          },
+          {
+            "name": "sprint",
+            "description": "Vis alle oppgaver i aktiv sprint"
+          },
+          {
+            "name": "detaljer",
+            "description": "Vis detaljer for en spesifikk Jira-oppgave (oppgi nøkkel, f.eks. PROJ-123)"
+          },
+          {
+            "name": "status",
+            "description": "Oppdater status på en oppgave (f.eks. flytt til In Progress eller Done)"
+          },
+          {
+            "name": "kommenter",
+            "description": "Legg til en kommentar på en Jira-oppgave"
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Jira-skill",
+      "properties": {
+        "jira-skill.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Base-URL for Jira-instansen (f.eks. https://jira.example.com eller https://example.atlassian.net)"
+        },
+        "jira-skill.pat": {
+          "type": "string",
+          "default": "",
+          "description": "Personal Access Token (PAT) for autentisering mot Jira API (for Jira Server/Data Center)",
+          "markdownDescription": "Personal Access Token (PAT) for autentisering mot Jira API. **Oppbevares sikkert.** For Jira Cloud, bruk API-token + e-post."
+        },
+        "jira-skill.email": {
+          "type": "string",
+          "default": "",
+          "description": "E-postadresse for Jira Cloud-autentisering (brukes sammen med API-token)"
+        },
+        "jira-skill.projectKey": {
+          "type": "string",
+          "default": "",
+          "description": "Standard Jira-prosjektnøkkel (f.eks. PROJ)"
+        },
+        "jira-skill.boardId": {
+          "type": "string",
+          "default": "",
+          "description": "Board-ID for Scrum/Kanban-board (valgfritt, brukes for sprint-oppslag)"
+        },
+        "jira-skill.isCloud": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Overstyrer automatisk deteksjon av Jira-type. Utelat denne for auto-detect: URL-er med `.atlassian.net` tolkes som Cloud (Basic auth med e-post + API-token), alle andre som Server/Data Center (Bearer PAT)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.1",
+    "@types/vscode": "^1.109.0",
+    "@vscode/vsce": "^3.7.1",
+    "typescript": "^5.9.3"
+  }
+}
