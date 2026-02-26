@@ -62,6 +62,9 @@ npm install
 # Bygg
 npm run compile
 
+# Lint
+npm run lint
+
 # Pakke som VSIX (valgfritt)
 npm run package
 ```
