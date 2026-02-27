@@ -2,7 +2,7 @@
   "name": "jira-skill",
   "displayName": "Jira-skill",
   "description": "GitHub Copilot Skill for interaksjon med Jira – hent oppgaver, assigner, oppdater status og start utvikling direkte fra Copilot Chat",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "vegvesen",
   "license": "MIT",
   "engines": {
@@ -21,6 +21,14 @@
       {
         "command": "jira-skill.startDevelopment",
         "title": "Jira: Start utvikling i Plan-mode"
+      },
+      {
+        "command": "jira-skill.setPat",
+        "title": "Jira: Sett PAT/API-token (sikker lagring)"
+      },
+      {
+        "command": "jira-skill.clearPat",
+        "title": "Jira: Fjern lagret PAT/API-token"
       }
     ],
     "chatParticipants": [
@@ -54,6 +62,18 @@
           {
             "name": "kommenter",
             "description": "Legg til en kommentar på en Jira-oppgave"
+          },
+          {
+            "name": "settPAT",
+            "description": "Sett Jira PAT eller API-token sikkert (lagres i SecretStorage, aldri i settings.json)"
+          },
+          {
+            "name": "fjernPAT",
+            "description": "Fjern lagret Jira PAT fra SecretStorage"
+          },
+          {
+            "name": "authstatus",
+            "description": "Diagnostikk for Jira-autentisering (SecretStorage, config og live auth-test)"
           }
         ]
       }
@@ -65,12 +85,6 @@
           "type": "string",
           "default": "",
           "description": "Base-URL for Jira-instansen (f.eks. https://jira.example.com eller https://example.atlassian.net)"
-        },
-        "jira-skill.pat": {
-          "type": "string",
-          "default": "",
-          "description": "Personal Access Token (PAT) for autentisering mot Jira API (for Jira Server/Data Center)",
-          "markdownDescription": "Personal Access Token (PAT) for autentisering mot Jira API. **Oppbevares sikkert.** For Jira Cloud, bruk API-token + e-post."
         },
         "jira-skill.email": {
           "type": "string",
@@ -91,6 +105,11 @@
           "type": "boolean",
           "default": false,
           "markdownDescription": "Overstyrer automatisk deteksjon av Jira-type. Utelat denne for auto-detect: URL-er med `.atlassian.net` tolkes som Cloud (Basic auth med e-post + API-token), alle andre som Server/Data Center (Bearer PAT)."
+        },
+        "jira-skill.allowLlmData": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Tillat at Jira-oppgavedata (tittel, beskrivelse, status) sendes til Copilot LLM for analyse og anbefalinger. Sensitiv info som tokens og passord strippes automatisk. Sett til `false` for å deaktivere all LLM-analyse."
         }
       }
     }
