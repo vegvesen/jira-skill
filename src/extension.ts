@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { createHash } from 'crypto';
 import { JiraClient, JiraIssue } from './jiraClient';
 import { WorkspaceAnalyzer } from './workspaceAnalyzer';
 
@@ -693,7 +694,7 @@ async function handleAuthStatus(
 
 function normalizePatToken(value: string): string {
     let token = value.trim();
-    token = token.replace(/^['\"]+|['\"]+$/g, '');
+    token = token.replace(/^['"]+|['"]+$/g, '');
     token = token.replace(/^Bearer\s+/i, '');
     return token.trim();
 }
@@ -703,7 +704,7 @@ function normalizeBaseUrl(value: string): string {
 }
 
 function fingerprintToken(token: string): string {
-    return require('crypto').createHash('sha256').update(token).digest('hex').slice(0, 12);
+    return createHash('sha256').update(token).digest('hex').slice(0, 12);
 }
 
 async function probeAuthMode(
