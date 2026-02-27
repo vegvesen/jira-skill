@@ -249,15 +249,15 @@ export class JiraClient {
     }
 
     /**
-     * Henter neste høyest prioriterte uassignerte oppgave fra backlog/sprint.
-     * Inkluderer alle ikke-ferdige statuser (støtter både Scrum og Kanban).
+     * Henter neste høyest prioriterte uassignerte oppgave fra "Klar til utvikling".
+     * Kun saker som ikke er assignet til noen og som står i "Klar til utvikling" plukkes.
      */
     public async getNextPriorityIssue(): Promise<JiraIssue | null> {
         const projectFilter = this.projectKey
             ? `project = ${this.projectKey} AND `
             : '';
-        // Uassignerte oppgaver som ikke er ferdige, epics ekskludert, sortert etter prioritet
-        const jql = `${projectFilter}assignee is EMPTY AND statusCategory != Done AND issuetype != Epic ORDER BY priority ASC, rank ASC`;
+        // Kun uassignerte oppgaver i "Klar til utvikling", epics ekskludert, sortert etter prioritet
+        const jql = `${projectFilter}assignee is EMPTY AND status = "Klar til utvikling" AND issuetype != Epic ORDER BY priority ASC, rank ASC`;
         const issues = await this.searchIssues(jql, 1);
         return issues.length > 0 ? issues[0] : null;
     }
@@ -309,13 +309,25 @@ export class JiraClient {
 
         for (const target of targets) {
             const t = target.toLowerCase();
-            const match = transitions.find(tr =>
+
+            // Prioriter eksakt treff på transisjonsnavn eller mål-status
+            const exact = transitions.find(tr =>
+                tr.name.toLowerCase() === t ||
+                tr.to.name.toLowerCase() === t
+            );
+            if (exact) {
+                await this.transitionIssue(issueKey, exact.id);
+                return exact.to.name;
+            }
+
+            // Deretter delvis treff (includes)
+            const partial = transitions.find(tr =>
                 tr.name.toLowerCase().includes(t) ||
                 tr.to.name.toLowerCase().includes(t)
             );
-            if (match) {
-                await this.transitionIssue(issueKey, match.id);
-                return match.to.name;
+            if (partial) {
+                await this.transitionIssue(issueKey, partial.id);
+                return partial.to.name;
             }
         }
 

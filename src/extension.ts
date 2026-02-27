@@ -228,13 +228,13 @@ async function handleNeste(
         stream.markdown(`⚠️ Kunne ikke tilordne oppgaven: ${e.message}\n\n`);
     }
 
-    // 3. Flytt til In Progress
-    stream.progress('Flytter til In Progress...');
+    // 3. Flytt til Under utvikling / In Progress
+    stream.progress('Flytter til Under utvikling...');
     try {
-        // Prøv vanlige "under arbeid"-synonymer på både norsk og engelsk
+        // Prøv spesifikke norske statuser først, deretter engelske synonymer
         const newStatus = await client.moveToStatus(
             issue.key,
-            'utvikling', 'progress', 'in progress', 'active', 'doing', 'open', 'analyse'
+            'under utvikling', 'in progress', 'progress', 'active', 'doing', 'analyse', 'open'
         );
         stream.markdown(`🔄 **Status endret til:** ${newStatus}\n\n`);
     } catch (e: any) {
@@ -261,15 +261,27 @@ async function handleNeste(
 
     const agentPrompt = buildAgentPrompt(issue, techSummary, request.prompt);
 
-    stream.markdown(`---\n\n## 🛠️ Klar for utvikling\n\n`);
-    stream.markdown(`Trykk knappen under for å starte **Plan-mode** i Copilot. `);
-    stream.markdown(`Copilot vil analysere kodebasen, foreslå endringer og opprette/redigere filer for deg.\n\n`);
+    // Sjekk om auto-start av Plan-mode er aktivert
+    const autoStart = vscode.workspace.getConfiguration('jira-skill').get<boolean>('autoStartPlan', false);
 
-    stream.button({
-        command: 'jira-skill.startDevelopment',
-        arguments: [agentPrompt],
-        title: '🚀 Start utvikling i Plan-mode',
-    });
+    if (autoStart) {
+        stream.markdown(`---\n\n## 🛠️ Starter Plan-mode automatisk…\n\n`);
+        stream.markdown(`Copilot vil analysere kodebasen, foreslå endringer og opprette/redigere filer for deg.\n\n`);
+        // Start Plan-mode direkte uten knappetrykk
+        setTimeout(async () => {
+            await vscode.commands.executeCommand('jira-skill.startDevelopment', agentPrompt);
+        }, 500);
+    } else {
+        stream.markdown(`---\n\n## 🛠️ Klar for utvikling\n\n`);
+        stream.markdown(`Trykk knappen under for å starte **Plan-mode** i Copilot. `);
+        stream.markdown(`Copilot vil analysere kodebasen, foreslå endringer og opprette/redigere filer for deg.\n\n`);
+
+        stream.button({
+            command: 'jira-skill.startDevelopment',
+            arguments: [agentPrompt],
+            title: '🚀 Start utvikling i Plan-mode',
+        });
+    }
 
     // 6. Legg til Jira-lenke
     stream.markdown(`\n\n---\n📎 [Åpne ${issue.key} i Jira](${issue.url})\n`);

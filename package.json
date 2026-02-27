@@ -2,7 +2,7 @@
   "name": "jira-skill",
   "displayName": "Jira-skill",
   "description": "GitHub Copilot Skill for interaksjon med Jira – hent oppgaver, assigner, oppdater status og start utvikling direkte fra Copilot Chat",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "vegvesen",
   "license": "MIT",
   "engines": {
@@ -110,6 +110,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Tillat at Jira-oppgavedata (tittel, beskrivelse, status) sendes til Copilot LLM for analyse og anbefalinger. Sensitiv info som tokens og passord strippes automatisk. Sett til `false` for å deaktivere all LLM-analyse."
+        },
+        "jira-skill.autoStartPlan": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Start Plan-mode automatisk når du tar en ny oppgave via `/neste`. Når aktivert slipper du å trykke på knappen – Copilot Plan-mode åpnes direkte med utviklingsprompten."
         }
       }
     }
