@@ -59,11 +59,12 @@ export class JiraClient {
     private projectKey: string;
     private boardId: string;
     private isCloud: boolean;
+    private resolvedServerBaseUrl?: string;
 
-    constructor() {
+    constructor(pat: string) {
         const config = vscode.workspace.getConfiguration('jira-skill');
         this.baseUrl = (config.get<string>('baseUrl', '') || '').replace(/\/+$/, '');
-        this.pat = config.get<string>('pat', '');
+        this.pat = pat;
         this.email = config.get<string>('email', '');
         this.projectKey = config.get<string>('projectKey', '');
         this.boardId = config.get<string>('boardId', '');
@@ -88,8 +89,11 @@ export class JiraClient {
         if (!this.baseUrl) {
             return 'Jira base-URL er ikke konfigurert. Sett `jira-skill.baseUrl` i VS Code-innstillingene.';
         }
+        if (!this.baseUrl.startsWith('https://')) {
+            return 'Jira base-URL må bruke HTTPS for sikker kommunikasjon. Endre `jira-skill.baseUrl` til å starte med `https://`.';
+        }
         if (!this.pat) {
-            return 'Jira PAT/API-token er ikke konfigurert. Sett `jira-skill.pat` i VS Code-innstillingene.';
+            return 'Jira PAT/API-token er ikke konfigurert. Kjør `@jira /settPAT` for å lagre token sikkert i SecretStorage.';
         }
         if (this.isCloud && !this.email) {
             return 'E-post for Jira Cloud er ikke konfigurert. Sett `jira-skill.email` i VS Code-innstillingene.\n(Bruker du Jira Server/Data Center? Sett `jira-skill.isCloud` til `false`.)';
@@ -128,20 +132,65 @@ export class JiraClient {
             options.body = JSON.stringify(body);
         }
 
-        const response = await fetch(url, options);
+        const urlsToTry = this.getFallbackUrls(url);
 
-        if (!response.ok) {
-            const errorBody = await response.text().catch(() => '');
-            throw new Error(
-                `Jira API-feil (${response.status} ${response.statusText}): ${errorBody.substring(0, 500)}`
-            );
+        let lastStatus = 0;
+        for (const candidateUrl of urlsToTry) {
+            const response = await fetch(candidateUrl, options);
+            lastStatus = response.status;
+
+            if (response.ok) {
+                if (!this.isCloud && candidateUrl.includes(`${this.baseUrl}/jira/rest/`)) {
+                    this.resolvedServerBaseUrl = `${this.baseUrl}/jira`;
+                }
+
+                if (response.status === 204) {
+                    return null;
+                }
+
+                return response.json();
+            }
+
+            if (response.status !== 404) {
+                await response.text().catch(() => '');
+                break;
+            }
+            await response.text().catch(() => '');
         }
 
-        if (response.status === 204) {
-            return null;
+        const hint = lastStatus === 401 ? ' — sjekk PAT/API-token'
+            : lastStatus === 403 ? ' — mangler tilgang'
+            : lastStatus === 404 ? ' — ressurs ikke funnet (sjekk baseUrl, ofte mangler /jira)'
+            : '';
+        throw new Error(`Jira API-feil (${lastStatus})${hint}`);
+    }
+
+    private getFallbackUrls(url: string): string[] {
+        if (this.isCloud) {
+            return [url];
         }
 
-        return response.json();
+        const urls = new Set<string>();
+        urls.add(url);
+
+        const activeBase = this.resolvedServerBaseUrl || this.baseUrl;
+        if (activeBase !== this.baseUrl && url.startsWith(`${this.baseUrl}/`)) {
+            urls.add(url.replace(this.baseUrl, activeBase));
+        }
+
+        if (url.includes('/rest/api/2/')) {
+            urls.add(url.replace('/rest/api/2/', '/rest/api/latest/'));
+        }
+
+        if (!activeBase.toLowerCase().endsWith('/jira') && url.startsWith(`${activeBase}/rest/`)) {
+            const jiraBaseUrl = `${activeBase}/jira`;
+            urls.add(url.replace(activeBase, jiraBaseUrl));
+            if (url.includes('/rest/api/2/')) {
+                urls.add(url.replace(activeBase, jiraBaseUrl).replace('/rest/api/2/', '/rest/api/latest/'));
+            }
+        }
+
+        return Array.from(urls);
     }
 
     // ─── Bruker ──────────────────────────────────────────────────────────────

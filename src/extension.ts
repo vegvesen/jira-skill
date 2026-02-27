@@ -2,12 +2,40 @@ import * as vscode from 'vscode';
 import { JiraClient, JiraIssue } from './jiraClient';
 import { WorkspaceAnalyzer } from './workspaceAnalyzer';
 
-// ─── Aktivering ──────────────────────────────────────────────────────────────
+let extensionContext: vscode.ExtensionContext;
+
+// ─── Aktivering ──────────────────────────────────────────────────────────────────────────────
 
 export function activate(context: vscode.ExtensionContext) {
+    extensionContext = context;
+
     const participant = vscode.chat.createChatParticipant('jira-skill.assistant', handler);
     participant.iconPath = new vscode.ThemeIcon('bookmark');
     context.subscriptions.push(participant);
+
+    // Kommando for sikker PAT-håndtering via SecretStorage
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jira-skill.setPat', async () => {
+            const input = await vscode.window.showInputBox({
+                prompt: 'Skriv inn Jira PAT eller API-token',
+                password: true,
+                ignoreFocusOut: true,
+                placeHolder: 'Lim inn token her…',
+            });
+            const pat = normalizePatToken(input || '');
+            if (pat) {
+                await context.secrets.store('jira-skill.pat', pat);
+                vscode.window.showInformationMessage('Jira PAT lagret sikkert i SecretStorage.');
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jira-skill.clearPat', async () => {
+            await context.secrets.delete('jira-skill.pat');
+            vscode.window.showInformationMessage('Jira PAT fjernet fra SecretStorage.');
+        })
+    );
 
     // Kommando for å starte utvikling i Copilot Agent/Plan-mode
     const startDevCmd = vscode.commands.registerCommand(
@@ -63,6 +91,12 @@ async function handler(
             return handleStatus(request, stream, token);
         case 'kommenter':
             return handleKommenter(request, stream, token);
+        case 'settPAT':
+            return handleSettPAT(stream);
+        case 'fjernPAT':
+            return handleFjernPAT(stream);
+        case 'authstatus':
+            return handleAuthStatus(stream);
         default:
             return handleFreeform(request, stream, token);
     }
@@ -70,17 +104,18 @@ async function handler(
 
 // ─── Hjelpefunksjoner ────────────────────────────────────────────────────────
 
-function createClient(stream: vscode.ChatResponseStream): JiraClient | null {
-    const client = new JiraClient();
+async function createClient(stream: vscode.ChatResponseStream): Promise<JiraClient | null> {
+    const storedPatRaw = await extensionContext.secrets.get('jira-skill.pat');
+    const pat = normalizePatToken(storedPatRaw || '');
+    if (pat && storedPatRaw && pat !== storedPatRaw) {
+        await extensionContext.secrets.store('jira-skill.pat', pat);
+    }
+
+    const client = new JiraClient(pat);
     const err = client.validateConfig();
     if (err) {
-        stream.markdown(`⚠️ **Konfigurasjonsfeil:** ${err}\n\n`);
-        stream.markdown('Konfigurer i VS Code-innstillinger (`settings.json`):\n```json\n{\n');
-        stream.markdown('  "jira-skill.baseUrl": "https://jira.example.com",\n');
-        stream.markdown('  "jira-skill.pat": "din-pat-eller-api-token",\n');
-        stream.markdown('  "jira-skill.email": "din@epost.no",\n');
-        stream.markdown('  "jira-skill.projectKey": "PROJ",\n');
-        stream.markdown('  "jira-skill.isCloud": true\n}\n```\n');
+        stream.markdown(`\u26a0\ufe0f **Konfigurasjonsfeil:** ${err}\n\n`);
+        stream.markdown('Kj\u00f8r kommandoen **`@jira /settPAT`** eller **Jira: Sett PAT/API-token** (`jira-skill.setPat`) for \u00e5 konfigurere tilkobling.\n');
         return null;
     }
     return client;
@@ -123,6 +158,12 @@ async function callLLM(
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<boolean> {
+    // Sjekk om bruker tillater LLM-deling av Jira-data
+    const llmConfig = vscode.workspace.getConfiguration('jira-skill');
+    if (!llmConfig.get<boolean>('allowLlmData', true)) {
+        stream.markdown('\u2139\ufe0f *LLM-analyse er deaktivert. Aktiver med `jira-skill.allowLlmData`.*\n');
+        return false;
+    }
     try {
         const models = await vscode.lm.selectChatModels({ vendor: 'copilot', family: 'gpt-4o' });
         if (models.length === 0) {
@@ -152,7 +193,7 @@ async function handleNeste(
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
-    const client = createClient(stream);
+    const client = await createClient(stream);
     if (!client) { return { metadata: { command: 'neste' } }; }
 
     // 1. Finn neste oppgave
@@ -242,7 +283,7 @@ async function handleMine(
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
-    const client = createClient(stream);
+    const client = await createClient(stream);
     if (!client) { return { metadata: { command: 'mine' } }; }
 
     stream.progress('Henter dine oppgaver fra Jira...');
@@ -308,7 +349,7 @@ async function handleSprint(
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
-    const client = createClient(stream);
+    const client = await createClient(stream);
     if (!client) { return { metadata: { command: 'sprint' } }; }
 
     stream.progress('Henter sprint-oppgaver fra Jira...');
@@ -364,7 +405,7 @@ async function handleDetaljer(
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
-    const client = createClient(stream);
+    const client = await createClient(stream);
     if (!client) { return { metadata: { command: 'detaljer' } }; }
 
     const query = request.prompt.trim();
@@ -442,7 +483,7 @@ async function handleStatus(
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
-    const client = createClient(stream);
+    const client = await createClient(stream);
     if (!client) { return { metadata: { command: 'status' } }; }
 
     const input = request.prompt.trim();
@@ -498,7 +539,7 @@ async function handleKommenter(
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
-    const client = createClient(stream);
+    const client = await createClient(stream);
     if (!client) { return { metadata: { command: 'kommenter' } }; }
 
     const input = request.prompt.trim();
@@ -532,6 +573,173 @@ async function handleKommenter(
     return { metadata: { command: 'kommenter' } };
 }
 
+// ─── /settPAT og /fjernPAT ──────────────────────────────────────────────────
+
+async function handleSettPAT(
+    stream: vscode.ChatResponseStream
+): Promise<vscode.ChatResult> {
+    const input = await vscode.window.showInputBox({
+        prompt: 'Skriv inn Jira PAT eller API-token',
+        password: true,
+        ignoreFocusOut: true,
+        placeHolder: 'Lim inn token her…',
+    });
+    const pat = normalizePatToken(input || '');
+    if (pat) {
+        await extensionContext.secrets.store('jira-skill.pat', pat);
+        stream.markdown('✅ **PAT lagret** sikkert i SecretStorage.\n\n');
+        stream.markdown('Tokenet brukes automatisk ved neste Jira-forespørsel.\n');
+    } else {
+        stream.markdown('ℹ️ Ingen token ble angitt. PAT er ikke endret.\n');
+    }
+    return { metadata: { command: 'settPAT' } };
+}
+
+async function handleFjernPAT(
+    stream: vscode.ChatResponseStream
+): Promise<vscode.ChatResult> {
+    await extensionContext.secrets.delete('jira-skill.pat');
+    stream.markdown('🗑️ **PAT fjernet** fra SecretStorage.\n\n');
+    stream.markdown('Bruk `@jira /settPAT` for å konfigurere ny token.\n');
+    return { metadata: { command: 'fjernPAT' } };
+}
+
+async function handleAuthStatus(
+    stream: vscode.ChatResponseStream
+): Promise<vscode.ChatResult> {
+    const config = vscode.workspace.getConfiguration('jira-skill');
+    const baseUrl = normalizeBaseUrl(config.get<string>('baseUrl', '') || '');
+    const email = (config.get<string>('email', '') || '').trim();
+    const isCloudExplicit = config.inspect<boolean>('isCloud');
+    const isCloudValue =
+        isCloudExplicit?.globalValue ??
+        isCloudExplicit?.workspaceValue ??
+        isCloudExplicit?.workspaceFolderValue;
+    const isCloud = isCloudValue !== undefined
+        ? isCloudValue
+        : baseUrl.toLowerCase().includes('.atlassian.net');
+
+    const secret = await extensionContext.secrets.get('jira-skill.pat');
+    const pat = normalizePatToken(secret || '');
+    const tokenFingerprint = pat ? fingerprintToken(pat) : '';
+
+    stream.markdown('## 🔎 Jira auth-diagnostikk\n\n');
+    stream.markdown(`- Base URL: ${baseUrl ? '✅ satt' : '❌ mangler'}\n`);
+    stream.markdown(`- HTTPS: ${baseUrl.startsWith('https://') ? '✅' : '❌'}\n`);
+    stream.markdown(`- Jira-type: ${isCloud ? 'Cloud' : 'Server/Data Center'}\n`);
+    stream.markdown(`- E-post (Cloud): ${isCloud ? (email ? '✅ satt' : '❌ mangler') : 'ikke påkrevd'}\n`);
+    stream.markdown(`- PAT i SecretStorage: ${pat ? '✅ funnet' : '❌ mangler'}\n\n`);
+    if (pat) {
+        stream.markdown(`- PAT-lengde: ${pat.length}\n`);
+        stream.markdown(`- PAT-fingerprint (sha256/12): ${tokenFingerprint}\n\n`);
+    }
+
+    if (!baseUrl || !baseUrl.startsWith('https://') || !pat || (isCloud && !email)) {
+        stream.markdown('⚠️ Konfigurasjon er ikke komplett. Korriger punktene over og kjør `@jira /authstatus` på nytt.\n');
+        return { metadata: { command: 'authstatus' } };
+    }
+
+    stream.progress('Kjører live autentiseringstest mot Jira...');
+    try {
+        const client = new JiraClient(pat);
+        const user = await client.getCurrentUser();
+        stream.markdown(`✅ **Auth OK** — innlogget som **${user.displayName}**.\n`);
+    } catch (e: any) {
+        stream.markdown(`❌ **Auth feilet:** ${e.message}\n\n`);
+
+        if (String(e?.message || '').includes('(401)')) {
+            const cloudProbe = await probeAuthMode(baseUrl, true, pat, email);
+            const serverProbe = await probeAuthMode(baseUrl, false, pat, email);
+            const jiraBaseUrl = baseUrl.toLowerCase().endsWith('/jira') ? baseUrl : `${baseUrl}/jira`;
+            const serverJiraPathProbe = jiraBaseUrl === baseUrl
+                ? { ok: false, error: 'ikke relevant (baseUrl har allerede /jira)' }
+                : await probeAuthMode(jiraBaseUrl, false, pat, email);
+            const wrongTokenProbe = await probeAuthMode(baseUrl, false, `${pat}-invalid-probe`, email);
+
+            stream.markdown('### Probe av auth-modus\n');
+            stream.markdown(`- Cloud (Basic e-post+token): ${cloudProbe.ok ? '✅ OK' : `❌ ${cloudProbe.error}`}\n`);
+            stream.markdown(`- Server/DC (Bearer PAT): ${serverProbe.ok ? '✅ OK' : `❌ ${serverProbe.error}`}\n`);
+            stream.markdown(`- Server/DC med /jira-path: ${serverJiraPathProbe.ok ? '✅ OK' : `❌ ${serverJiraPathProbe.error}`}\n\n`);
+            stream.markdown(`- Kontroll (bevisst feil token): ${wrongTokenProbe.ok ? '⚠️ Uventet OK' : `❌ ${wrongTokenProbe.error}`}\n`);
+
+            if (serverProbe.wwwAuthenticate) {
+                stream.markdown(`- WWW-Authenticate (server-respons): ${serverProbe.wwwAuthenticate}\n`);
+            }
+            stream.markdown('\n');
+
+            if (cloudProbe.ok && !serverProbe.ok) {
+                stream.markdown('💡 **Tiltak:** Jira svarer kun på Cloud-auth. Sett `jira-skill.isCloud` til `true` og behold API-token + e-post.\n');
+            } else if (!cloudProbe.ok && serverProbe.ok) {
+                stream.markdown('💡 **Tiltak:** Jira svarer kun på Server/DC-auth. Sett `jira-skill.isCloud` til `false` og bruk PAT.\n');
+            } else if (!serverProbe.ok && serverJiraPathProbe.ok) {
+                stream.markdown(`💡 **Tiltak:** Base URL mangler sannsynligvis /jira. Sett jira-skill.baseUrl til: ${jiraBaseUrl}\n`);
+            } else if (!cloudProbe.ok && !serverProbe.ok) {
+                stream.markdown('💡 **Tiltak:** Ingen auth-metode fungerte. Mest sannsynlig er token feil/utløpt, mangler rettigheter, eller base-URL peker feil.\n');
+                if (wrongTokenProbe.error === serverProbe.error) {
+                    stream.markdown('💡 **Ekstra hint:** Feil respons er identisk med bevisst ugyldig token. Dette tyder på ugyldig/utløpt PAT, eller at upstream/proxy ikke sender Authorization-header videre.\n');
+                }
+            }
+        }
+
+        stream.markdown('\nMulige årsaker:\n');
+        stream.markdown('- Feil token-type (Cloud krever API-token, ikke PAT fra Server/DC)\n');
+        stream.markdown('- `jira-skill.isCloud` stemmer ikke med Jira-instansen\n');
+        stream.markdown('- Token mangler rettigheter (browse/read på prosjekt)\n');
+        stream.markdown('- Base URL peker til feil tenant eller proxy\n');
+    }
+
+    return { metadata: { command: 'authstatus' } };
+}
+
+function normalizePatToken(value: string): string {
+    let token = value.trim();
+    token = token.replace(/^['\"]+|['\"]+$/g, '');
+    token = token.replace(/^Bearer\s+/i, '');
+    return token.trim();
+}
+
+function normalizeBaseUrl(value: string): string {
+    return value.trim().replace(/\/+$/, '');
+}
+
+function fingerprintToken(token: string): string {
+    return require('crypto').createHash('sha256').update(token).digest('hex').slice(0, 12);
+}
+
+async function probeAuthMode(
+    baseUrl: string,
+    isCloud: boolean,
+    pat: string,
+    email: string
+): Promise<{ ok: boolean; error?: string; wwwAuthenticate?: string }> {
+    try {
+        if (isCloud && !email) {
+            return { ok: false, error: 'mangler e-post' };
+        }
+
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': isCloud
+                ? `Basic ${Buffer.from(`${email}:${pat}`).toString('base64')}`
+                : `Bearer ${pat}`,
+        };
+
+        const response = await fetch(`${baseUrl}/rest/api/2/myself`, {
+            method: 'GET',
+            headers,
+        });
+
+        if (response.ok) {
+            return { ok: true };
+        }
+        const wwwAuthenticate = response.headers.get('www-authenticate') || undefined;
+        return { ok: false, error: `HTTP ${response.status}`, wwwAuthenticate };
+    } catch {
+        return { ok: false, error: 'nettverksfeil' };
+    }
+}
+
 // ─── Freeform ────────────────────────────────────────────────────────────────
 
 /**
@@ -543,7 +751,7 @@ async function handleFreeform(
     stream: vscode.ChatResponseStream,
     token: vscode.CancellationToken
 ): Promise<vscode.ChatResult> {
-    const client = createClient(stream);
+    const client = await createClient(stream);
     if (!client) { return { metadata: { command: '' } }; }
 
     const prompt = request.prompt.trim();
@@ -557,7 +765,10 @@ async function handleFreeform(
         stream.markdown(`| \`@jira /sprint\` | 🏃 Se aktiv sprint |\n`);
         stream.markdown(`| \`@jira /detaljer PROJ-123\` | 🔍 Vis detaljer for en oppgave |\n`);
         stream.markdown(`| \`@jira /status PROJ-123 done\` | 🔄 Endre status |\n`);
-        stream.markdown(`| \`@jira /kommenter PROJ-123 tekst\` | 💬 Legg til kommentar |\n\n`);
+        stream.markdown(`| \`@jira /kommenter PROJ-123 tekst\` | 💬 Legg til kommentar |\n`);
+        stream.markdown(`| \`@jira /settPAT\` | 🔑 Sett Jira-token sikkert |\n`);
+        stream.markdown(`| \`@jira /fjernPAT\` | 🗑️ Fjern lagret token |\n\n`);
+        stream.markdown(`| \`@jira /authstatus\` | 🔎 Kjør auth-diagnostikk |\n\n`);
         stream.markdown(`Du kan også skrive fritt, f.eks.:\n`);
         stream.markdown(`- \`@jira Hva bør jeg jobbe med nå?\`\n`);
         stream.markdown(`- \`@jira Finn alle bugs med høy prioritet\`\n`);
@@ -576,7 +787,7 @@ async function handleFreeform(
         if (issueKey) {
             // Hent spesifikk oppgave
             const issue = await client.getIssue(issueKey);
-            jiraContext = `Oppgave ${issue.key}:\n- Tittel: ${issue.summary}\n- Status: ${issue.status}\n- Prioritet: ${issue.priority}\n- Tildelt: ${issue.assignee || 'Ingen'}\n- Beskrivelse: ${issue.description || 'Ingen beskrivelse'}\n`;
+            jiraContext = `Oppgave ${issue.key}:\n- Tittel: ${issue.summary}\n- Status: ${issue.status}\n- Prioritet: ${issue.priority}\n- Tildelt: ${issue.assignee || 'Ingen'}\n- Beskrivelse: ${sanitizeForLlm(issue.description, 500) || 'Ingen beskrivelse'}\n`;
         } else {
             // Hent brukerens oppgaver som kontekst
             const myIssues = await client.getMyIssues();
@@ -603,8 +814,22 @@ Gi et nyttig og konkret svar basert på Jira-dataene. Hvis bruker ser ut til å 
 
 // ─── Utility ─────────────────────────────────────────────────────────────────
 
-/**
- * Ekstraher en Jira issue-nøkkel fra tekst (f.eks. "PROJ-123").
+/** * Saniterer tekst før den sendes til LLM.
+ * Fjerner potensielle hemmeligheter og avkorter til maks lengde.
+ */
+function sanitizeForLlm(text: string, maxLength: number = 1000): string {
+    if (!text) { return ''; }
+    let sanitized = text
+        .replace(/(?:token|password|secret|key|pat|apikey|api_key|pwd|credentials?)\s*[:=]\s*\S+/gi, '[REDACTED]')
+        .replace(/Bearer\s+\S+/gi, '[REDACTED]')
+        .replace(/Basic\s+[A-Za-z0-9+/=]+/gi, '[REDACTED]');
+    if (sanitized.length > maxLength) {
+        sanitized = sanitized.substring(0, maxLength) + '… (avkortet)';
+    }
+    return sanitized;
+}
+
+/** * Ekstraher en Jira issue-nøkkel fra tekst (f.eks. "PROJ-123").
  * Støtter også bare tall hvis projectKey er konfigurert.
  */
 function extractIssueKey(text: string, projectKey: string): string | null {
@@ -661,7 +886,7 @@ Jira-oppgave: ${issue.key}
 Tittel: ${issue.summary}
 Type: ${issue.issueType}
 Prioritet: ${issue.priority}
-Beskrivelse: ${issue.description || 'Ingen beskrivelse gitt.'}
+Beskrivelse: ${sanitizeForLlm(issue.description, 1500) || 'Ingen beskrivelse gitt.'}
 ${subtaskInfo}${techLine}
 ${userPrompt ? `\nTilleggsinformasjon fra utvikler: ${userPrompt}` : ''}
 
@@ -690,7 +915,7 @@ function buildDevPlanPrompt(issue: JiraIssue, repoContext: string, userPrompt: s
 - **Tittel:** ${issue.summary}
 - **Type:** ${issue.issueType}
 - **Prioritet:** ${issue.priority}
-- **Beskrivelse:** ${issue.description || 'Ingen beskrivelse gitt.'}
+- **Beskrivelse:** ${sanitizeForLlm(issue.description, 1500) || 'Ingen beskrivelse gitt.'}
 ${subtaskInfo}
 
 ## Prosjektkontekst
