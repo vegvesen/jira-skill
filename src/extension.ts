@@ -256,7 +256,7 @@ async function handleNeste(
     try {
         techSummary = await analyzer.getTechSummary();
     } catch {
-        techSummary = '';
+        // keep empty string default
     }
 
     const agentPrompt = buildAgentPrompt(issue, techSummary, request.prompt);
@@ -794,7 +794,7 @@ async function handleFreeform(
 
     // Forsøk å hente kontekstuell informasjon
     stream.progress('Henter info fra Jira...');
-    let jiraContext = '';
+    let jiraContext: string;
 
     try {
         if (issueKey) {
