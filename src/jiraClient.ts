@@ -61,7 +61,7 @@ export class JiraClient {
     private isCloud: boolean;
     private resolvedServerBaseUrl?: string;
 
-    private static isAtlassianCloudHost(baseUrl: string): boolean {
+    static isAtlassianCloudHost(baseUrl: string): boolean {
         if (!baseUrl) {
             return false;
         }

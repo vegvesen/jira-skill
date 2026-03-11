@@ -221,7 +221,7 @@ async function handleNeste(
     stream.progress('Tilordner oppgaven til deg...');
     try {
         const user = await client.getCurrentUser();
-        const userId = client.getBaseUrl().includes('atlassian.net')
+        const userId = JiraClient.isAtlassianCloudHost(client.getBaseUrl())
             ? user.accountId!
             : user.name!;
         await client.assignIssue(issue.key, userId);
@@ -632,7 +632,7 @@ async function handleAuthStatus(
         isCloudExplicit?.workspaceFolderValue;
     const isCloud = isCloudValue !== undefined
         ? isCloudValue
-        : baseUrl.toLowerCase().includes('.atlassian.net');
+        : JiraClient.isAtlassianCloudHost(baseUrl);
 
     const secret = await extensionContext.secrets.get('jira-skill.pat');
     const pat = normalizePatToken(secret || '');
