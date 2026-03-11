@@ -61,6 +61,19 @@ export class JiraClient {
     private isCloud: boolean;
     private resolvedServerBaseUrl?: string;
 
+    private static isAtlassianCloudHost(baseUrl: string): boolean {
+        if (!baseUrl) {
+            return false;
+        }
+        try {
+            const parsed = new URL(baseUrl);
+            const hostname = parsed.hostname.toLowerCase();
+            return hostname === 'atlassian.net' || hostname.endsWith('.atlassian.net');
+        } catch {
+            return false;
+        }
+    }
+
     constructor(pat: string, resource?: vscode.Uri) {
         const config = vscode.workspace.getConfiguration('jira-skill', resource ?? null);
         this.baseUrl = (config.get<string>('baseUrl', '') || '').replace(/\/+$/, '');
@@ -79,7 +92,7 @@ export class JiraClient {
             this.isCloud = isCloudExplicit;
         } else {
             // Automatisk deteksjon basert på URL
-            this.isCloud = this.baseUrl.toLowerCase().includes('.atlassian.net');
+            this.isCloud = JiraClient.isAtlassianCloudHost(this.baseUrl);
         }
     }
 
