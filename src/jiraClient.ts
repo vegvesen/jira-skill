@@ -61,8 +61,8 @@ export class JiraClient {
     private isCloud: boolean;
     private resolvedServerBaseUrl?: string;
 
-    constructor(pat: string) {
-        const config = vscode.workspace.getConfiguration('jira-skill');
+    constructor(pat: string, resource?: vscode.Uri) {
+        const config = vscode.workspace.getConfiguration('jira-skill', resource ?? null);
         this.baseUrl = (config.get<string>('baseUrl', '') || '').replace(/\/+$/, '');
         this.pat = pat;
         this.email = config.get<string>('email', '');
@@ -160,8 +160,8 @@ export class JiraClient {
 
         const hint = lastStatus === 401 ? ' — sjekk PAT/API-token'
             : lastStatus === 403 ? ' — mangler tilgang'
-            : lastStatus === 404 ? ' — ressurs ikke funnet (sjekk baseUrl, ofte mangler /jira)'
-            : '';
+                : lastStatus === 404 ? ' — ressurs ikke funnet (sjekk baseUrl, ofte mangler /jira)'
+                    : '';
         throw new Error(`Jira API-feil (${lastStatus})${hint}`);
     }
 

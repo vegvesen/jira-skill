@@ -112,7 +112,8 @@ async function createClient(stream: vscode.ChatResponseStream): Promise<JiraClie
         await extensionContext.secrets.store('jira-skill.pat', pat);
     }
 
-    const client = new JiraClient(pat);
+    const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const client = new JiraClient(pat, workspaceUri);
     const err = client.validateConfig();
     if (err) {
         stream.markdown(`\u26a0\ufe0f **Konfigurasjonsfeil:** ${err}\n\n`);
@@ -160,7 +161,8 @@ async function callLLM(
     token: vscode.CancellationToken
 ): Promise<boolean> {
     // Sjekk om bruker tillater LLM-deling av Jira-data
-    const llmConfig = vscode.workspace.getConfiguration('jira-skill');
+    const workspaceUri = vscode.workspace.workspaceFolders?.[0]?.uri;
+    const llmConfig = vscode.workspace.getConfiguration('jira-skill', workspaceUri ?? null);
     if (!llmConfig.get<boolean>('allowLlmData', true)) {
         stream.markdown('\u2139\ufe0f *LLM-analyse er deaktivert. Aktiver med `jira-skill.allowLlmData`.*\n');
         return false;
