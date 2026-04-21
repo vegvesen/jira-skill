@@ -136,11 +136,11 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.6.0",
-    "@types/vscode": "^1.115.0",
-    "@typescript-eslint/eslint-plugin": "^8.58.1",
+    "@types/vscode": "^1.116.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.2",
     "@typescript-eslint/parser": "^8.24.1",
-    "@vscode/vsce": "^3.7.1",
-    "eslint": "^10.2.0",
-    "typescript": "^6.0.2"
+    "@vscode/vsce": "^3.9.1",
+    "eslint": "^10.2.1",
+    "typescript": "^6.0.3"
   }
 }
