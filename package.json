@@ -130,17 +130,15 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint \"src/**/*.ts\"",
+    "lint": "oxlint src",
+    "lint:fix": "oxlint --fix src",
     "package": "npx @vscode/vsce package --allow-missing-repository"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.2",
     "@types/vscode": "^1.125.0",
-    "@typescript-eslint/eslint-plugin": "^8.65.0",
-    "@typescript-eslint/parser": "^8.24.1",
     "@vscode/vsce": "^3.9.2",
-    "eslint": "^10.8.0",
+    "oxlint": "^1.77.0",
     "typescript": "^7.0.2"
   }
 }
