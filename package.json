@@ -135,10 +135,10 @@
     "package": "npx @vscode/vsce package --allow-missing-repository"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
-    "@types/vscode": "^1.134.0",
+    "@types/node": "^26.4.1",
+    "@types/vscode": "^1.136.0",
     "@vscode/vsce": "^3.9.2",
-    "oxlint": "^1.80.0",
+    "oxlint": "^1.81.0",
     "typescript": "^7.0.2"
   }
 }
